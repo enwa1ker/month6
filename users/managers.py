@@ -7,6 +7,9 @@ class CustomUserManager(BaseUserManager):
         if not email:
             raise ValueError("The given email must be set")
         email = self.normalize_email(email)
+        
+        extra_fields.pop("username", None)
+        
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save()
@@ -24,8 +27,9 @@ class CustomUserManager(BaseUserManager):
         if extra_fields.get("is_active") is not True:
             raise ValueError("Superuser must have is_active=True.")
 
-        # ← добавить проверку phone_number
         if not extra_fields.get("phone_number"):
             raise ValueError("Superuser must have phone_number.")
+
+        extra_fields.pop("username", None)
 
         return self.create_user(email, password, **extra_fields)
