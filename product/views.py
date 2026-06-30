@@ -73,13 +73,11 @@ class ProductListCreateAPIView(ListCreateAPIView):
         serializer = ProductValidateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        # Get validated data
         title = serializer.validated_data.get('title')
         description = serializer.validated_data.get('description')
         price = serializer.validated_data.get('price')
         category = serializer.validated_data.get('category')
 
-        # Create product
         product = Product.objects.create(
             title=title,
             description=description,
@@ -120,12 +118,10 @@ class ReviewViewSet(ModelViewSet):
         serializer = ReviewValidateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        # Get validated data
         text = serializer.validated_data.get('text')
         stars = serializer.validated_data.get('stars')
         product = serializer.validated_data.get('product')
 
-        # Create review
         review = Review.objects.create(
             text=text,
             stars=stars,

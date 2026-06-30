@@ -1,5 +1,6 @@
 from django.contrib.auth.models import BaseUserManager
 
+
 class CustomUserManager(BaseUserManager):
 
     def create_user(self, email, password=None, **extra_fields):
@@ -22,4 +23,9 @@ class CustomUserManager(BaseUserManager):
             raise ValueError("Superuser must have is_superuser=True.")
         if extra_fields.get("is_active") is not True:
             raise ValueError("Superuser must have is_active=True.")
+
+        # ← добавить проверку phone_number
+        if not extra_fields.get("phone_number"):
+            raise ValueError("Superuser must have phone_number.")
+
         return self.create_user(email, password, **extra_fields)

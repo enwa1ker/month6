@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from django.contrib.auth.models import User
 from rest_framework.exceptions import ValidationError
 from .models import ConfirmationCode, CustomUser
 
@@ -10,14 +9,16 @@ class UserBaseSerializer(serializers.Serializer):
 
 
 class AuthValidateSerializer(UserBaseSerializer):
-    pass
+    pass  # Swagger увидит email + password
 
 
 class RegisterValidateSerializer(UserBaseSerializer):
+    phone_number = serializers.CharField(required=False, allow_blank=True, default='')  # ← добавить
+
     def validate_email(self, email):
         try:
             CustomUser.objects.get(email=email)
-        except:
+        except CustomUser.DoesNotExist:
             return email
         raise ValidationError('User уже существует!')
 
