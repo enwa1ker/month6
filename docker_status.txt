@@ -1,0 +1,18 @@
+Docker Compose status report
+============================
+
+Date: 2026-07-17
+Project: DRF6-64
+
+Running containers:
+- drf6-64-db (postgres:14) - healthy
+- drf6-64-redis (redis:7) - healthy
+- drf6-64-web (drf6-64-web) - running
+- drf6-64-celery-worker (drf6-64-celery_worker) - running
+- drf6-64-celery-beat (drf6-64-celery_beat) - running
+
+Verification command:
+docker compose ps
+
+Web service URL:
+http://localhost:8000/

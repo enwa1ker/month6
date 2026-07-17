@@ -1,20 +1,109 @@
-version: '3'
 services:
-  shop_api:
+  db:
+    image: postgres:14
+    container_name: drf6-64-db
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-shop_api_db}
+      POSTGRES_USER: ${POSTGRES_USER:-shop_api_user_db}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-12345}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT_HOST:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-shop_api_user_db} -d ${POSTGRES_DB:-shop_api_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7
+    container_name: drf6-64-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT_HOST:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
     build:
       context: .
-    command: sh -c "python manage.py runserver 0.0.0.0:8000"
-    ports:
-      - "7001:8000"
-    depends_on:
-      - shop_api_db
-  shop_api_db:
-    image: "postgres:14"
+      dockerfile: Dockerfile
+    container_name: drf6-64-web
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    env_file:
+      - .env
     environment:
-      - POSTGRES_DB=shop_api_db
-      - POSTGRES_USER=shop_api_user_db
-      - POSTGRES_PASSWORD=12345
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
     volumes:
-      - 'shop_api-data:/var/lib/postgresql/data'
+      - .:/app
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: drf6-64-celery-worker
+    command: celery -A shop_api worker --loglevel=info
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: drf6-64-celery-beat
+    command: celery -A shop_api beat --loglevel=info
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
-  shop_api-data:
+  postgres_data:
+  redis_data:
