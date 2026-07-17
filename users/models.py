@@ -6,13 +6,13 @@ from django.core.exceptions import ValidationError
 
 class CustomUser(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
-    phone_number = models.CharField(max_length=20, blank=True, null=True)
+    phone_number = models.CharField(max_length=20, blank=True, default="")
     is_active = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)
 
     objects = CustomUserManager()
 
-    REQUIRED_FIELDS = ["phone_number"]
+    REQUIRED_FIELDS = []
     USERNAME_FIELD = "email"
 
     def clean(self):
@@ -20,8 +20,12 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         if self.is_superuser and not self.phone_number:
             raise ValidationError("Суперпользователь обязан указать номер телефона")
 
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
     def __str__(self):
-        return self.email or "" 
+        return self.email or ""
 
 
 class ConfirmationCode(models.Model):

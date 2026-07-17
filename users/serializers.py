@@ -5,22 +5,24 @@ from .models import ConfirmationCode, CustomUser
 
 class UserBaseSerializer(serializers.Serializer):
     email = serializers.EmailField()
-    password = serializers.CharField()
+    password = serializers.CharField(write_only=True)
 
 
 class AuthValidateSerializer(UserBaseSerializer):
-    pass  # Swagger увидит email + password
+    pass
 
 
 class RegisterValidateSerializer(UserBaseSerializer):
-    phone_number = serializers.CharField(required=False, allow_blank=True, default='')  # ← добавить
+    phone_number = serializers.CharField(required=False, allow_blank=True, default='', write_only=True)
 
     def validate_email(self, email):
-        try:
-            CustomUser.objects.get(email=email)
-        except CustomUser.DoesNotExist:
-            return email
-        raise ValidationError('User уже существует!')
+        email = email.lower()
+        if CustomUser.objects.filter(email=email).exists():
+            raise ValidationError('User уже существует!')
+        return email
+
+    def validate_phone_number(self, value):
+        return value.strip() if value else ''
 
 
 class ConfirmationSerializer(serializers.Serializer):
