@@ -2,9 +2,10 @@ from django.db import transaction
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth import authenticate
-from rest_framework.authtoken.models import Token
 from rest_framework.generics import CreateAPIView
 from drf_yasg.utils import swagger_auto_schema
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework.exceptions import ValidationError
 
 from .serializers import (
     RegisterValidateSerializer,
@@ -12,8 +13,26 @@ from .serializers import (
     ConfirmationSerializer
 )
 from .models import ConfirmationCode, CustomUser
+from rest_framework_simplejwt.tokens import RefreshToken
 import random
 import string
+
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        if user.birthdate:
+            token['birthdate'] = user.birthdate.isoformat()
+        return token
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        if not self.user.is_active:
+            raise ValidationError('User account is not activated yet!')
+        if self.user.birthdate:
+            data['birthdate'] = self.user.birthdate.isoformat()
+        return data
 
 
 class AuthorizationAPIView(CreateAPIView):
@@ -24,26 +43,9 @@ class AuthorizationAPIView(CreateAPIView):
         serializer = AuthValidateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        user = authenticate(
-            request=request,
-            username=serializer.validated_data['email'],
-            password=serializer.validated_data['password']
-        )
-
-        if user:
-            if not user.is_active:
-                return Response(
-                    status=status.HTTP_401_UNAUTHORIZED,
-                    data={'error': 'User account is not activated yet!'}
-                )
-
-            token, _ = Token.objects.get_or_create(user=user)
-            return Response(data={'key': token.key})
-
-        return Response(
-            status=status.HTTP_401_UNAUTHORIZED,
-            data={'error': 'User credentials are wrong!'}
-        )
+        token_serializer = CustomTokenObtainPairSerializer(data=request.data)
+        token_serializer.is_valid(raise_exception=True)
+        return Response(token_serializer.validated_data)
 
 
 class RegistrationAPIView(CreateAPIView):
@@ -57,13 +59,15 @@ class RegistrationAPIView(CreateAPIView):
         email = serializer.validated_data['email']
         password = serializer.validated_data['password']
         phone_number = serializer.validated_data.get('phone_number', '')
+        birthdate = serializer.validated_data.get('birthdate')
 
         # Use transaction to ensure data consistency
         with transaction.atomic():
             user = CustomUser.objects.create_user(
                 email=email,
                 password=password,
-                phone_number=phone_number, 
+                phone_number=phone_number,
+                birthdate=birthdate,
                 is_active=False
             )
 
@@ -99,7 +103,10 @@ class ConfirmUserAPIView(CreateAPIView):
             user.is_active = True
             user.save()
 
-            token, _ = Token.objects.get_or_create(user=user)
+            refresh = RefreshToken.for_user(user)
+            if user.birthdate:
+                refresh['birthdate'] = user.birthdate.isoformat()
+                refresh.access_token['birthdate'] = user.birthdate.isoformat()
 
             ConfirmationCode.objects.filter(user=user).delete()
 
@@ -107,6 +114,7 @@ class ConfirmUserAPIView(CreateAPIView):
             status=status.HTTP_200_OK,
             data={
                 'message': 'User аккаунт успешно активирован',
-                'key': token.key
+                'refresh': str(refresh),
+                'access': str(refresh.access_token)
             }
         )

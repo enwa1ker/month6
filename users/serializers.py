@@ -14,6 +14,7 @@ class AuthValidateSerializer(UserBaseSerializer):
 
 class RegisterValidateSerializer(UserBaseSerializer):
     phone_number = serializers.CharField(required=False, allow_blank=True, default='', write_only=True)
+    birthdate = serializers.DateField(required=False, allow_null=True, write_only=True)
 
     def validate_email(self, email):
         email = email.lower()

@@ -19,6 +19,7 @@ from .serializers import (
     ProductValidateSerializer,
     ReviewValidateSerializer
 )
+from common.validators import validate_user_age_from_token
 
 PAGE_SIZE = 5
 
@@ -70,8 +71,11 @@ class ProductListCreateAPIView(ListCreateAPIView):
     queryset = Product.objects.select_related('category').all()
     serializer_class = ProductSerializer
     pagination_class = CustomPagination
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
+        validate_user_age_from_token(getattr(request, 'auth', None))
+
         serializer = ProductValidateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -84,7 +88,8 @@ class ProductListCreateAPIView(ListCreateAPIView):
             title=title,
             description=description,
             price=price,
-            category=category
+            category=category,
+            owner=request.user
         )
 
         return Response(data=ProductSerializer(product).data,
