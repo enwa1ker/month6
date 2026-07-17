@@ -6,8 +6,11 @@ from django.core.exceptions import ValidationError
 
 class CustomUser(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
+    first_name = models.CharField(max_length=150, blank=True, default="")
+    last_name = models.CharField(max_length=150, blank=True, default="")
     birthdate = models.DateField(null=True, blank=True)
     phone_number = models.CharField(max_length=20, blank=True, default="")
+    registration_source = models.CharField(max_length=20, default="local")
     is_active = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)
 

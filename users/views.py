@@ -1,4 +1,11 @@
+import json
+import os
+import urllib.error
+import urllib.request
+
+from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth import authenticate
@@ -10,12 +17,15 @@ from rest_framework.exceptions import ValidationError
 from .serializers import (
     RegisterValidateSerializer,
     AuthValidateSerializer,
-    ConfirmationSerializer
+    ConfirmationSerializer,
+    GoogleAuthSerializer
 )
 from .models import ConfirmationCode, CustomUser
 from rest_framework_simplejwt.tokens import RefreshToken
 import random
 import string
+
+GOOGLE_TOKEN_INFO_URL = 'https://oauth2.googleapis.com/tokeninfo?id_token={}'
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -35,6 +45,32 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return data
 
 
+def verify_google_id_token(id_token):
+    if not id_token:
+        raise ValidationError('id_token is required')
+
+    try:
+        with urllib.request.urlopen(GOOGLE_TOKEN_INFO_URL.format(id_token), timeout=10) as resp:
+            data = json.load(resp)
+    except urllib.error.HTTPError:
+        raise ValidationError('Invalid Google token')
+    except Exception:
+        raise ValidationError('Could not verify Google token')
+
+    if settings.GOOGLE_CLIENT_ID:
+        if data.get('aud') != settings.GOOGLE_CLIENT_ID:
+            raise ValidationError('Google token audience mismatch')
+
+    issuer = data.get('iss')
+    if issuer not in ['accounts.google.com', 'https://accounts.google.com']:
+        raise ValidationError('Invalid Google token issuer')
+
+    if data.get('email_verified') not in ['true', 'True', '1']:
+        raise ValidationError('Google email is not verified')
+
+    return data
+
+
 class AuthorizationAPIView(CreateAPIView):
     serializer_class = AuthValidateSerializer
 
@@ -46,6 +82,56 @@ class AuthorizationAPIView(CreateAPIView):
         token_serializer = CustomTokenObtainPairSerializer(data=request.data)
         token_serializer.is_valid(raise_exception=True)
         return Response(token_serializer.validated_data)
+
+
+class GoogleLoginAPIView(CreateAPIView):
+    serializer_class = GoogleAuthSerializer
+
+    @swagger_auto_schema(request_body=GoogleAuthSerializer)
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        token_data = verify_google_id_token(serializer.validated_data['id_token'])
+        email = token_data.get('email')
+        if not email:
+            raise ValidationError('Google token does not contain email')
+
+        user, created = CustomUser.objects.get_or_create(
+            email=email,
+            defaults={
+                'first_name': token_data.get('given_name', ''),
+                'last_name': token_data.get('family_name', ''),
+                'is_active': True,
+                'registration_source': 'google'
+            }
+        )
+
+        if not created:
+            user.first_name = token_data.get('given_name', user.first_name)
+            user.last_name = token_data.get('family_name', user.last_name)
+            user.registration_source = 'google'
+            user.is_active = True
+
+        user.last_login = timezone.now()
+        user.save()
+
+        refresh = RefreshToken.for_user(user)
+        if user.birthdate:
+            refresh['birthdate'] = user.birthdate.isoformat()
+            refresh.access_token['birthdate'] = user.birthdate.isoformat()
+
+        return Response(
+            status=status.HTTP_200_OK,
+            data={
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'email': user.email,
+                'registration_source': user.registration_source,
+            }
+        )
 
 
 class RegistrationAPIView(CreateAPIView):

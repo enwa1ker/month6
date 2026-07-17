@@ -6,14 +6,17 @@ class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
         if not email:
             raise ValueError("The given email must be set")
-        if not password:
+        if not password and extra_fields.get('registration_source') != 'google':
             raise ValueError("The given password must be set")
 
         email = self.normalize_email(email)
         extra_fields.pop("username", None)
 
         user = self.model(email=email, **extra_fields)
-        user.set_password(password)
+        if password:
+            user.set_password(password)
+        else:
+            user.set_unusable_password()
         user.save()
         return user
 
