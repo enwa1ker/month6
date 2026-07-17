@@ -20,7 +20,8 @@ from .serializers import (
     ConfirmationSerializer,
     GoogleAuthSerializer
 )
-from .models import ConfirmationCode, CustomUser
+from .models import CustomUser
+from django.core.cache import cache
 from rest_framework_simplejwt.tokens import RefreshToken
 import random
 import string
@@ -157,13 +158,10 @@ class RegistrationAPIView(CreateAPIView):
                 is_active=False
             )
 
-            # Create a random 6-digit code
+            # Create a random 6-digit code and store it in Redis for 5 minutes
             code = ''.join(random.choices(string.digits, k=6))
-
-            confirmation_code = ConfirmationCode.objects.create(
-                user=user,
-                code=code
-            )
+            cache_key = f'confirmation_code:{user.id}'
+            cache.set(cache_key, code, timeout=300)
 
         return Response(
             status=status.HTTP_201_CREATED,
@@ -189,12 +187,12 @@ class ConfirmUserAPIView(CreateAPIView):
             user.is_active = True
             user.save()
 
+            cache.delete(f'confirmation_code:{user.id}')
+
             refresh = RefreshToken.for_user(user)
             if user.birthdate:
                 refresh['birthdate'] = user.birthdate.isoformat()
                 refresh.access_token['birthdate'] = user.birthdate.isoformat()
-
-            ConfirmationCode.objects.filter(user=user).delete()
 
         return Response(
             status=status.HTTP_200_OK,
